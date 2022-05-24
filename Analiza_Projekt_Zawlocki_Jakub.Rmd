@@ -1,0 +1,163 @@
+---
+output: pdf_document
+---
+
+\center
+
+### Uniwersytet im. Adama Mickiewicza w Poznaniu
+### Wydział Matematyki i Informatyki
+### Kierunek: Analiza i przetwarzanie danych
+
+\vspace{20pt}
+
+### Jakub Zawlocki
+### nr albumu: ******
+
+\vspace{100pt}
+
+
+# Projekt SQL - linie lotnicze
+
+\vspace{100pt}
+
+## Projekt przygotowany w ramach przedmiotu: \newline 
+## *Wprowadzenie do baz danych*
+
+
+\vspace{50pt}
+
+### 21.05.2022
+### Poznań
+
+\pagebreak
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r connection_to_database, include=FALSE}
+library('DBI')
+library('tinytex')
+
+con <- dbConnect(RPostgres::Postgres(),
+                 dbname = "dwbd_flights",
+                 host = "psql.wmi.amu.edu.pl",
+                 user = rstudioapi::askForPassword("Database user"),
+                 password = rstudioapi::askForPassword("Database password")
+                 )
+```
+
+Odpowiedzi na zadania:
+
+### 1. Jakie było średnie opóźnienie przylotu?
+
+```{sql connection=con}
+SELECT AVG(arr_delay_new) AS "avg_delay"
+FROM "Flight_delays";
+```
+
+
+
+### 2. Jakie było maksymalne opóźnienie przylotu?
+
+```{sql connection=con}
+SELECT MAX(arr_delay_new) AS "max_delay"
+FROM "Flight_delays"
+```
+
+
+
+### 3. Który lot miał największe opóźnienie przylotu?
+
+```{sql connection=con}
+SELECT carrier, origin_city_name, dest_city_name, fl_date, arr_delay_new
+FROM "Flight_delays"
+WHERE arr_delay_new IS NOT NULL
+ORDER BY arr_delay_new DESC
+LIMIT 1;
+```
+
+
+
+### 4. Które dni tygodnia są najgorsze do podróżowania?
+
+```{sql connection=con}
+SELECT
+    CASE day_of_week
+        WHEN '1' THEN 'Monday'
+        WHEN '2' THEN 'Tuesday'
+        WHEN '3' THEN 'Wednesday'
+        WHEN '4' THEN 'Thursday'
+        WHEN '5' THEN 'Friday'
+        WHEN '6' THEN 'Saturday'
+        WHEN '7' THEN 'Sunday'
+    END AS "weekday_name", AVG(arr_delay_new) AS "avg_delay"
+FROM "Flight_delays"
+GROUP BY weekday_name
+ORDER BY avg_delay DESC;
+```
+
+
+
+### 5. Które linie lotnicze latające z San Francisco (SFO) mają najmniejsze opóźnienia lotu?
+
+```{sql connection=con}
+SELECT a.airline_name, AVG(arr_delay_new) AS "avg_delay"
+FROM "Airlines" A INNER JOIN "Flight_delays" F ON a.airline_id = f.airline_id
+GROUP BY a.airline_name, f.origin
+HAVING origin = 'SFO'
+ORDER BY avg_delay DESC;
+```
+
+
+
+### 6. Jaka czesc linii lotniczych ma regularne opoznienia?
+
+```{sql connection=con}
+SELECT CAST(count(airline_name) AS FLOAT)/12 AS late_proportion
+FROM "Airlines" 
+WHERE airline_id IN (SELECT airline_id 
+                     FROM "Flight_delays" 
+                     GROUP BY airline_id 
+                     HAVING avg(arr_delay) > 10
+                     OR avg(dep_delay) > 10);
+```
+
+
+
+### 7. Jak opoznienia wylotow wplywaja na opoznienia przylotow?
+
+```{sql connection=con}
+SELECT corr(dep_delay_new, arr_delay_new) AS Pearsons_r
+FROM "Flight_delays";
+```
+
+
+
+### 9. Które linie lotnicze latają zarówno na trasie SFO --> PDF (Portland), jak i SFO --> EUG (Eugene)?
+
+```{sql connection=con}
+SELECT a.airline_name
+FROM "Airlines" A INNER JOIN "Flight_delays" F ON a.airline_id = f.airline_id
+WHERE origin = 'SFO' AND dest = 'PDX'
+INTERSECT 
+SELECT a.airline_name
+FROM "Airlines" A INNER JOIN "Flight_delays" F ON a.airline_id = f.airline_id
+WHERE origin = 'SFO' AND dest = 'EUG';
+```
+
+
+
+### 10. Jak najszybciej dostać się z Chicago do Stanfordu, zakładając wylot po 14:00 czasu lokalnego?
+
+```{sql connection=con}
+SELECT DISTINCT origin, dest, AVG(arr_delay_new) AS "avg_delay"
+FROM "Flight_delays"
+WHERE (origin = 'MDW' OR origin = 'ORD') AND (dest = 'SFO' OR dest = 'SJC' OR dest = 'OAK') 
+AND crs_dep_time > 1400
+GROUP BY dest, origin
+ORDER BY "avg_delay" DESC;
+```
